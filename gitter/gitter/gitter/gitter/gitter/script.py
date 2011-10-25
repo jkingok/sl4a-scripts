@@ -1,9 +1,26 @@
 # -*- coding: utf-8 -*- 
 
+# Part of Gitter - Simple Git client for Android
+license="""Copyright 2011 Joshua King
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License."""
+urls = {"Web site": "http://techtransit.blogspot.com", "Source Code": "https://github.com/jkingok/sl4a-scripts", "License": "http://www.apache.org/licenses/LICENSE-2.0"}
+
 import android 
 
 import os
 import sys
+import traceback
 
 droid = android.Android()
 
@@ -63,6 +80,12 @@ def showinput(t, m, d="", p="OK", n="Cancel", s=False):
 		return
 	else:
 		return r['value']
+
+def showerror(t="Error"):
+	droid.dialogDismiss()
+	m=traceback.format_exc()
+	if showquestion(t, m, "Copy to clipboard", "Close"):
+		droid.setClipboard(m)
  
 def showquestion(t, m, p="Yes", n="No"):
 	droid.dialogCreateAlert(t, m)
@@ -71,6 +94,12 @@ def showquestion(t, m, p="Yes", n="No"):
 	droid.dialogShow()
 	r=droid.dialogGetResponse().result
 	return (not ('canceled' in r)) and r['which']=="positive" 
+
+def showerror(t="Error"):
+	droid.dialogDismiss()
+	m=traceback.format_exc()
+	if showquestion(t, m, "Copy to clipboard", "Close"):
+		droid.setClipboard(m)
 
 def showmessage(t, m, n="OK"):
 	droid.dialogCreateAlert(t, m)
@@ -414,7 +443,8 @@ def do_ssh(khf=None, k=None, p=None, loading=False):
 							file.write(pubkey)
 						droid.dialogDismiss()
 						droid.makeToast("1024-bit RSA key generated in " + f)
-						showinput("Public Key", "Copy this to the server:", pubkey)
+						if showquestion("Public Key", pubkey, "Copy to clipboard", "Close"):
+							droid.setClipboard(pubkey)
 				else:
 					p = showinput("Passphrase", "Enter passphrase for " + f, n="None", s=True)
 		elif r == "Password":
@@ -425,14 +455,27 @@ def do_ssh(khf=None, k=None, p=None, loading=False):
 		sshpass = p
 	do_ssh_comment()
 
+def progress_to_log(text=None):
+	if text==None:
+		droid.fullSetProperty("textLog", "text", "")
+	else:
+		oldText = droid.fullQueryDetail("textLog").result["text"]
+		droid.fulSetProperty("textLog", "text", oldText + text)
+
 def do_pull():
 	global droid, repo, remoteclient, remoterepo, remotesrc
 	if localrepo==None or remoterepo==None:
 		droid.makeToast("Set repositories first!")
 	else:
 		showprogress("Fetching from remote repository", "Pull")
-		remote_refs = remoteclient.fetch(remotesrc, repo, progress=showprogress)
-		droid.dialogDismiss()
+		progress_to_log()
+		try:	
+			remote_refs = remoteclient.fetch(remotesrc, repo, progress=progress_to_log)
+		except:
+			showerror("Remote Pull Error")
+			return
+		else:
+			droid.dialogDismiss()
 		if "HEAD" in remote_refs:
 			repo.refs["refs/heads/master"] = remote_refs["HEAD"]
 			if showquestion("Pull", "Do a checkout from the commit now?"):
@@ -458,6 +501,27 @@ def do_checkout():
 				os.chmod(path, entry.mode)
 			except:
 				droid.makeToast("Cannot match mode " + str(entry.mode) + " on " + entry.path) 
+
+def log_recurse(sha):
+	global repo
+	commit = repo.get_object(sha)
+	text = "Commit " + commit.id + "\n" + commit.message + "\n"
+	for parent in commit.parents:
+		text = text + log_recurse(parent)
+	return text
+
+def do_log():
+	global droid, localrepo, repo
+	if localrepo==None:
+		droid.makeToast("Set local repository first!")
+	else:
+		if not "HEAD" in repo.refs:
+			droid.makeToast("Repository is empty.")
+		else:
+			log = log_recurse(repo.refs["HEAD"])
+			droid.fullSetProperty("textLog", "text", log)
+			if showquestion("Log", "Copy to clipboard?"):
+				droid.setClipboard(log)
 
 def do_commit():
 	global droid, localrepo, repo
@@ -532,7 +596,7 @@ def push_helper_1(refs):
 
 def push_helper_2(have, want, progress=None):
 	global droid, repo
-	return repo.object_store.generate_pack_contents(have, want, progress or showprogress)
+	return repo.object_store.generate_pack_contents(have, want, progress or progress_to_log)
 
 def do_push():
 	global droid, localrepo, remoteclient, remoterepo, remotesrc
@@ -540,8 +604,14 @@ def do_push():
 		droid.makeToast("Set repositories first!")
 	else:
 		showprogress("Sending to remote repository", "Push")
- 		remoteclient.send_pack(remotesrc, push_helper_1, push_helper_2)
- 		droid.dialogDismiss()
+		progress_to_log()
+		try:
+			remoteclient.send_pack(remotesrc, push_helper_1, push_helper_2)
+		except:
+			showerror("Remote Send Error")
+			return
+ 		else:
+ 			droid.dialogDismiss()
 
 def do_close(confirm=False):
 	global exiting
@@ -565,16 +635,26 @@ def do_click(what):
 		do_push()
 	elif what=="buttonClose":
 		do_close()
+	elif what=="buttonLog":
+		do_log()
 
 def do_about():
-	if showquestion("About", """Gitter
+	global license, urls
+	text = """Gitter
 Simple Git client
-1 October 2011
-Joshua King
-http://techtransit.blogspot.com
-https://github.com/jkingok/sl4a-scripts
-""", "Go to web site", "Close"):
-		droid.view("http://techtransit.blogspot.com")
+""" 
+	if license:
+		text = text + "\n" + license + "\n"
+ 	if os.path.exists("NEWS"):
+		with open("NEWS", "r") as file:
+			text = text + "\nVersion history:\n" + file.read()  
+  	elif os.path.exists("ChangeLog"):
+		with open("ChangeLog", "r") as file:
+			text = text + "\nVersion history:\n" + file.read() 
+	if showquestion("About", text, "Go to web site", "Close"):
+		r = showchoice("View web site", urls.keys(), "View")
+		if r != None:
+			droid.view(urls[r])
 
 def do_help():
 	showmessage("Help", """Gitter is a simple Git client.
@@ -624,7 +704,8 @@ if os.path.exists(".pickle"):
 		if v>2:
 			do_ssh(u.load(), u.load(), u.load(), True)
 else:
-	droid.makeToast("First time user: Press Menu for Help")
+	droid.makeToast("First time user: Showing Help")
+	do_help()
 
 eventloop()
 
