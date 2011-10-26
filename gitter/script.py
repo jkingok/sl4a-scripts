@@ -461,7 +461,7 @@ def progress_to_log(text=None):
 		droid.fullSetProperty("textLog", "text", "")
 	else:
 		oldText = droid.fullQueryDetail("textLog").result["text"]
-		droid.fullSetProperty("textLog", "text", oldText + text)
+		droid.fullSetProperty("textLog", "text", oldText + text + "\n")
 
 def do_pull():
 	global droid, repo, remoteclient, remoterepo, remotesrc
@@ -556,15 +556,14 @@ def do_tree_for_commit(t, p=None):
 			# File or directory modified
 			oldmode, oldsha = t[i]
 			if os.path.isdir(a):
-				if showquestion("Commit", "Enter directory " + r + "?"):
-					try:
-						t2 = repo.tree(oldsha)
-					except:
-						t2 = Tree()
-					if do_tree_for_commit(t2, r):
-						repo.object_store.add_object(t2)
-						t[i] = (oldmode, t2.id)
-						changes = True
+				try:
+					t2 = repo.object_store[oldsha]
+				except:
+					t2 = Tree()
+				if do_tree_for_commit(t2, r):
+					repo.object_store.add_object(t2)
+					t[i] = (oldmode, t2.id)
+					changes = True
 			else:
  				newmode = os.stat(a).st_mode 
  				with open(a, "rb") as file:
@@ -573,7 +572,7 @@ def do_tree_for_commit(t, p=None):
 					if oldmode != newmode or oldsha != newblob.id:
 						if showquestion("Commit", "Change " + r + "?"):
 							progress_to_log("Changed " + r)
-							object_store.add_object(newblob)
+							repo.object_store.add_object(newblob)
 							t[i] = (newmode, newblob.id)
 							changes = True
 		else:
@@ -626,8 +625,11 @@ def do_commit():
 			commit.commit_timezone = commit.author_timezone = tz
 			commit.encoding = "UTF-8"
 			commit.message = showinput("Message", "Enter commit message", def_comment)
-			object_store.add_object(commit)
-			repo.refs['refs/heads/master'] = commit.id
+			if commit.message:
+				object_store.add_object(commit)
+				repo.refs['refs/heads/master'] = commit.id
+			else:
+				droid.makeToast("Commit cancelled.")
  		else:
  			droid.makeToast("Nothing to commit.")
 
