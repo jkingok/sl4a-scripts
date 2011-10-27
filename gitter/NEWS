@@ -1,3 +1,5 @@
+2011-10-27 Fix layout so that the log can be scrolled properly. Close button is now in the menu.
+2011-10-27 Add browse button which can be used to view/edit files in the working copy.
 2011-10-26 Fixed being able to cancel a commit (at the message prompt).
 2011-10-26 Fixed hierarchical folder tree handling on commit.
 2011-10-26 Fixed progress logging.
