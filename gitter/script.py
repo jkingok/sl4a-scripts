@@ -18,6 +18,7 @@ urls = {"Web site": "http://techtransit.blogspot.com", "Source Code": "https://g
 
 import android 
 
+import mimetypes
 import os
 import sys
 import traceback
@@ -113,8 +114,10 @@ def showlayoutfile(f):
 def showopenfile(f=None, e=None, t="Open", p="Open", n="Cancel"): 
  	if f == None:
 		rootdir = os.getcwd()
-	else:
+	elif not os.path.isdir(f):
 		rootdir = os.path.dirname(f)
+	else:
+		rootdir = f
 	while True:
 		l = []
 		ld = []
@@ -524,6 +527,21 @@ def do_log():
 			if showquestion("Log", "Copy to clipboard?"):
 				droid.setClipboard(log)
 
+def do_browse():
+ 	global droid, localrepo
+	if localrepo==None:
+		droid.makeToast("Set local repository first!")
+	else:
+		f = localrepo
+ 		while f:
+ 			f = showopenfile(f, t="Browse working copy", p="View", n="Close")
+ 			if f:
+				mime, enc = mimetypes.guess_type(f)
+				if mime:
+					droid.view("file://" + f, mime)
+				elif showquestion("View", "Cannot identify type of " + f, "View as Text", "Cancel"):
+					droid.view("file://" + f, "text/plain")
+
 def do_tree_for_commit(t, p=None):
 	global droid, localrepo, repo
 	changes = False
@@ -680,6 +698,8 @@ def do_click(what):
 		do_close()
 	elif what=="buttonLog":
 		do_log()
+	elif what=="buttonBrowse":
+		do_browse()
 
 def do_about():
 	global license, urls
